@@ -10,9 +10,24 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.Messages
 import com.intellij.util.messages.Topic
 import java.awt.datatransfer.StringSelection
+import com.sun.speech.freetts.Voice
+import com.sun.speech.freetts.VoiceManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import org.vosk.Model
+import org.vosk.Recognizer
+import javax.sound.sampled.AudioFormat
+import javax.sound.sampled.AudioSystem
 
+const val MODEL_PATH="src/main/resources/vosk-model/vosk-model-small-en-us-0.15"
 
 class MyGradleListener : ExternalSystemTaskNotificationListener {
+
+    val coroutineScope= CoroutineScope(Dispatchers.Main)
+
     override fun onStart(id: ExternalSystemTaskId) {
 
     }
@@ -35,31 +50,48 @@ class MyGradleListener : ExternalSystemTaskNotificationListener {
     }
 
     override fun onFailure(id: ExternalSystemTaskId, e: Exception) {
-//        println("Gradle sync failed: ${e.message}")
+        System.setProperty(
+            "freetts.voices",
+            "com.sun.speech.freetts.en.us.cmu_us_kal.KevinVoiceDirectory"
+        )
+        val voice: Voice? = VoiceManager.getInstance().getVoice("kevin16")
+        val shouldSpeak= MyPluginSettingState.instance.enableVoice
+        if(shouldSpeak)
+        speakText(voice,"It looks like you are facing some issue. Do you want to find a solution on Chat G P T?")
 
-        ApplicationManager.getApplication().invokeLater {
-            val result = Messages.showOkCancelDialog(
-                "It looks like you are facing some issue. Do you want to find solution on ChatGPT?", // message
-                "Confirmation",            // title
-                "Yes",                      // ok button text
-                "No",                  // cancel button text
-                Messages.getQuestionIcon() // icon
-            )
+        coroutineScope.launch {
+
+
+                    val result = Messages.showOkCancelDialog(
+                        "It looks like you are facing some issue. Do you want to find solution on ChatGPT?",
+                        "Confirmation",
+                        "Yes",
+                        "No",
+                        Messages.getQuestionIcon()
+                    )
+
 
             if (result == Messages.OK) {
-                // OK was pressed, perform your action here
+                if(shouldSpeak)  speakText(voice,"Error has been copied to clipboard.")
                 val stringSelection = StringSelection(e.message)
                 CopyPasteManager.getInstance().setContents(stringSelection)
                 Messages.showInfoMessage("Error has been copied to clipboard.","Error Info")
                 BrowserUtil.browse("https://chatgpt.com/")
             } else {
-                // Cancel was pressed, perform your action here
+                if(shouldSpeak) speakText(voice,"Ok no issues")
                 Messages.showInfoMessage("Ok no issues", "Confirmation")
             }
-//            Messages.showInfoMessage(e.message, "Joke")
+            voice?.deallocate()
         }
-
     }
+
+    private fun speakText(voice: Voice?,text:String) {
+        coroutineScope.launch(Dispatchers.Default) {
+            voice?.allocate()
+            voice?.speak(text)
+        }
+    }
+
 
     override fun beforeCancel(id: ExternalSystemTaskId) {
 

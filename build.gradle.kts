@@ -1,3 +1,5 @@
+import java.net.URI
+
 plugins {
   id("java")
   id("org.jetbrains.kotlin.jvm") version "1.9.0"
@@ -11,6 +13,8 @@ version = "1.0-SNAPSHOT"
 
 repositories {
   mavenCentral()
+  maven { url=URI("https://oss.sonatype.org/content/repositories/snapshots") }
+
 }
 
 // Configure Gradle IntelliJ Plugin
@@ -66,4 +70,9 @@ dependencies {
   implementation("com.squareup.okhttp3:okhttp:4.11.0")
   implementation("org.json:json:20231013")
   implementation(kotlin("stdlib"))
+  implementation("net.sf.sociaal:freetts:1.2.2")
+//  implementation("edu.cmu.sphinx:sphinx4-core:5prealpha-SNAPSHOT")
+//  implementation("edu.cmu.sphinx:sphinx4-data:5prealpha-SNAPSHOT")
+  implementation("com.alphacephei:vosk:0.3.38")
+
 }
