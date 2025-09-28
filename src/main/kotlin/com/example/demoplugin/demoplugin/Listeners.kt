@@ -2,6 +2,7 @@ package com.example.demoplugin.demoplugin
 
 import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskId
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskNotificationEvent
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskNotificationListener
@@ -17,16 +18,23 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.vosk.Model
 import org.vosk.Recognizer
+import java.nio.file.Files
+import java.nio.file.Path
+import java.nio.file.StandardCopyOption
+import java.util.zip.ZipInputStream
 import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.AudioSystem
 
-const val MODEL_PATH="src/main/resources/vosk-model/vosk-model-small-en-us-0.15"
+const val MODEL_PATH="/Users/rahularora/Downloads/demoPlugin_complete/src/main/resources/vosk-model-small-en-us"
 
 class MyGradleListener : ExternalSystemTaskNotificationListener {
 
-    val coroutineScope= CoroutineScope(Dispatchers.Main)
+    val coroutineScope= CoroutineScope(Dispatchers.IO)
 
     override fun onStart(id: ExternalSystemTaskId) {
 
@@ -50,44 +58,62 @@ class MyGradleListener : ExternalSystemTaskNotificationListener {
     }
 
     override fun onFailure(id: ExternalSystemTaskId, e: Exception) {
-        System.setProperty(
-            "freetts.voices",
-            "com.sun.speech.freetts.en.us.cmu_us_kal.KevinVoiceDirectory"
-        )
-        val voice: Voice? = VoiceManager.getInstance().getVoice("kevin16")
         val shouldSpeak= MyPluginSettingState.instance.enableVoice
-        if(shouldSpeak)
-        speakText(voice,"It looks like you are facing some issue. Do you want to find a solution on Chat G P T?")
+        if(shouldSpeak) {
+            System.setProperty(
+                "freetts.voices",
+                "com.sun.speech.freetts.en.us.cmu_us_kal.KevinVoiceDirectory"
+            )
+            val voice: Voice? = VoiceManager.getInstance().getVoice("kevin16")
+            voice?.allocate()
+            coroutineScope.launch {
+                speakText(voice,"It looks like you are facing some issue. Do you want to find a solution on Chat G P T?")
+                val userInput=takeUserInput()
+                when(userInput) {
+                    1-> {
 
-        coroutineScope.launch {
+                        speakText(voice,"Error has been copied to clipboard.")
 
+                        delay(1000)
+                        voice?.deallocate()
+                        val stringSelection = StringSelection(e.message)
+                        CopyPasteManager.getInstance().setContents(stringSelection)
+                            BrowserUtil.browse("https://chatgpt.com/")
+                    }
+                    0-> {
+                            speakText(voice, "Ok no issues")
 
-                    val result = Messages.showOkCancelDialog(
-                        "It looks like you are facing some issue. Do you want to find solution on ChatGPT?",
-                        "Confirmation",
-                        "Yes",
-                        "No",
-                        Messages.getQuestionIcon()
-                    )
+                        voice?.deallocate()
+                    }
+                }
+            }
+        }
+        else {
+            ApplicationManager.getApplication().invokeLater {
+            val result = Messages.showOkCancelDialog(
+                "It looks like you are facing some issue. Do you want to find solution on ChatGPT?",
+                "Confirmation",
+                "Yes",
+                "No",
+                Messages.getQuestionIcon()
+            )
 
 
             if (result == Messages.OK) {
-                if(shouldSpeak)  speakText(voice,"Error has been copied to clipboard.")
                 val stringSelection = StringSelection(e.message)
                 CopyPasteManager.getInstance().setContents(stringSelection)
-                Messages.showInfoMessage("Error has been copied to clipboard.","Error Info")
+                Messages.showInfoMessage("Error has been copied to clipboard.", "Error Info")
                 BrowserUtil.browse("https://chatgpt.com/")
             } else {
-                if(shouldSpeak) speakText(voice,"Ok no issues")
+
                 Messages.showInfoMessage("Ok no issues", "Confirmation")
             }
-            voice?.deallocate()
+        }
         }
     }
 
-    private fun speakText(voice: Voice?,text:String) {
-        coroutineScope.launch(Dispatchers.Default) {
-            voice?.allocate()
+    private suspend fun speakText(voice: Voice?,text:String) {
+        withContext(Dispatchers.Default) {
             voice?.speak(text)
         }
     }
@@ -116,6 +142,94 @@ fun registerGradleListener(project: Project, listener: ExternalSystemTaskNotific
         listener
     )
 }
+
+fun unzip(zipFile: Path, targetDir: Path) {
+    ZipInputStream(Files.newInputStream(zipFile)).use { zip ->
+        var entry = zip.nextEntry
+        while (entry != null) {
+            val outPath = targetDir.resolve(entry.name)
+            if (entry.isDirectory) {
+                Files.createDirectories(outPath)
+            } else {
+                Files.createDirectories(outPath.parent)
+                Files.copy(zip, outPath, StandardCopyOption.REPLACE_EXISTING)
+            }
+            entry = zip.nextEntry
+        }
+    }
+}
+
+fun getModelDir(): Path {
+    val pluginDataDir = Path.of(PathManager.getPluginsPath(), "demoPlugin", "models")
+    java.nio.file.Files.createDirectories(pluginDataDir)
+    return pluginDataDir
+}
+
+suspend fun ensureModelExists(): Path {
+    val modelDir = getModelDir().resolve("vosk-model-small-en-us")
+    if (Files.exists(modelDir) && Files.isDirectory(modelDir)) {
+        return modelDir
+    }
+
+    val modelZip = getModelDir().resolve("vosk-model-small-en-us.zip")
+    val url = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
+
+    val client = OkHttpClient()
+    val request = Request.Builder().url(url).build()
+
+    println("⬇️ Downloading Vosk model... (this may take a while)")
+
+    client.newCall(request).execute().use { response ->
+        if (!response.isSuccessful) throw IllegalStateException("Failed to download model: ${response.code}")
+        response.body?.byteStream()?.use { input ->
+            Files.copy(input, modelZip, StandardCopyOption.REPLACE_EXISTING)
+        }
+    }
+
+    // unzip
+    unzip(modelZip, getModelDir())
+
+    return modelDir
+}
+
+
+ fun takeUserInput(): Int {
+    val model = Model(MODEL_PATH)
+    val recognizer = Recognizer(model, 16000.0f)
+    val format = AudioFormat(16000f, 16, 1, true, false)
+    val microphone = AudioSystem.getTargetDataLine(format)
+
+    return try {
+        microphone.open(format)
+        microphone.start()
+
+        val buffer = ByteArray(4096)
+        val startTime = System.currentTimeMillis()
+        println("🎤 Speak into the microphone...")
+
+        while (System.currentTimeMillis() - startTime <= 5000) {
+            val bytesRead = microphone.read(buffer, 0, buffer.size)
+            if (bytesRead > 0) {
+                if (recognizer.acceptWaveForm(buffer, bytesRead)) {
+                    val text = recognizer.result.lowercase()
+                    println("✅ Final: $text")
+                    if ("yes" in text || "ok" in text) return 1
+                } else {
+                    val partial = recognizer.partialResult.lowercase()
+                    println("🔹 Partial: $partial")
+                    if ("yes" in partial || "ok" in partial) return 1
+                }
+            }
+        }
+        0
+    } finally {
+        microphone.drain()
+        microphone.stop()
+        microphone.close()
+    }
+}
+
+
 
 
 

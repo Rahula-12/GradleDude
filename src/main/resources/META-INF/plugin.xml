@@ -32,5 +32,4 @@
     <postStartupActivity implementation="com.example.demoplugin.demoplugin.MyStartupActivity"/>
   </extensions>
 
-
 </idea-plugin>
