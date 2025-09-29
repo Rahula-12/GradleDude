@@ -8,29 +8,39 @@ import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskNotifica
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskNotificationListener
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.ui.DialogWrapper
 import com.intellij.openapi.ui.Messages
 import com.intellij.util.messages.Topic
-import java.awt.datatransfer.StringSelection
 import com.sun.speech.freetts.Voice
 import com.sun.speech.freetts.VoiceManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.vosk.Model
 import org.vosk.Recognizer
+import java.awt.datatransfer.StringSelection
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.util.zip.ZipInputStream
 import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.AudioSystem
+import javax.swing.JComponent
+import javax.swing.JLabel
 
 const val MODEL_PATH="/Users/rahularora/Downloads/demoPlugin_complete/src/main/resources/vosk-model-small-en-us"
+
+class MyDialog : DialogWrapper(true) {
+    init {
+        init()
+        title = "Confirmation"
+    }
+
+    override fun createCenterPanel(): JComponent {
+        return JLabel("It looks like you are facing some issue. Do you want to find solution on ChatGPT?")
+    }
+}
 
 class MyGradleListener : ExternalSystemTaskNotificationListener {
 
@@ -66,27 +76,44 @@ class MyGradleListener : ExternalSystemTaskNotificationListener {
             )
             val voice: Voice? = VoiceManager.getInstance().getVoice("kevin16")
             voice?.allocate()
-            coroutineScope.launch {
-                speakText(voice,"It looks like you are facing some issue. Do you want to find a solution on Chat G P T?")
-                val userInput=takeUserInput()
-                when(userInput) {
-                    1-> {
-
-                        speakText(voice,"Error has been copied to clipboard.")
-
-                        delay(1000)
-                        voice?.deallocate()
-                        val stringSelection = StringSelection(e.message)
-                        CopyPasteManager.getInstance().setContents(stringSelection)
+            var result:Int?=null
+            val thread=object : Thread(){
+                override fun run() {
+                    speakText(voice,"It looks like you are facing some issue. Do you want to find a solution on Chat G P T?")
+                    result=takeUserInput()
+                    when(result) {
+                        0-> {
+                            speakText(voice,"Error has been copied to clipboard.")
+                            voice?.deallocate()
+                            val stringSelection = StringSelection(e.message)
+                            CopyPasteManager.getInstance().setContents(stringSelection)
                             BrowserUtil.browse("https://chatgpt.com/")
-                    }
-                    0-> {
+                        }
+                        2-> {
                             speakText(voice, "Ok no issues")
-
-                        voice?.deallocate()
+                            voice?.deallocate()
+                        }
                     }
                 }
+
             }
+            ApplicationManager.getApplication().invokeLater {
+                        result = Messages.showOkCancelDialog(
+                            "It looks like you are facing some issue. Do you want to find solution on ChatGPT?",
+                            "Confirmation",
+                            "Yes",
+                            "No",
+                            Messages.getQuestionIcon()
+                        )
+                if(result==Messages.OK) {
+                Messages.showInfoMessage("Error has been copied to clipboard.", "Error Info")
+            }
+                else {
+                Messages.showInfoMessage("Ok no issues", "Confirmation")
+            }
+            }
+            thread.start()
+
         }
         else {
             ApplicationManager.getApplication().invokeLater {
@@ -112,10 +139,10 @@ class MyGradleListener : ExternalSystemTaskNotificationListener {
         }
     }
 
-    private suspend fun speakText(voice: Voice?,text:String) {
-        withContext(Dispatchers.Default) {
+    private  fun speakText(voice: Voice?,text:String) {
+
             voice?.speak(text)
-        }
+
     }
 
 
@@ -213,15 +240,15 @@ suspend fun ensureModelExists(): Path {
                 if (recognizer.acceptWaveForm(buffer, bytesRead)) {
                     val text = recognizer.result.lowercase()
                     println("✅ Final: $text")
-                    if ("yes" in text || "ok" in text) return 1
+                    if ("yes" in text || "ok" in text) return 0
                 } else {
                     val partial = recognizer.partialResult.lowercase()
                     println("🔹 Partial: $partial")
-                    if ("yes" in partial || "ok" in partial) return 1
+                    if ("yes" in partial || "ok" in partial) return 0
                 }
             }
         }
-        0
+        2
     } finally {
         microphone.drain()
         microphone.stop()

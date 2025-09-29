@@ -1,6 +1,5 @@
 package com.example.demoplugin.demoplugin
-
 //
-//fun main () {
-//    prit("hi")
-//}
+fun main () {
+    prit("hi")
+}
