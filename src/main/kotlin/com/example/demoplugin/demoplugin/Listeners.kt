@@ -15,6 +15,10 @@ import com.sun.speech.freetts.Voice
 import com.sun.speech.freetts.VoiceManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.vosk.Model
@@ -31,7 +35,10 @@ import javax.swing.JLabel
 
 const val MODEL_PATH="/Users/rahularora/Downloads/demoPlugin_complete/src/main/resources/vosk-model-small-en-us"
 
-class MyDialog : DialogWrapper(true) {
+class ResultDialog:DialogWrapper(true) {
+
+    lateinit var exception: String
+
     init {
         init()
         title = "Confirmation"
@@ -40,12 +47,28 @@ class MyDialog : DialogWrapper(true) {
     override fun createCenterPanel(): JComponent {
         return JLabel("It looks like you are facing some issue. Do you want to find solution on ChatGPT?")
     }
+
+    override fun doOKAction() {
+        super.doOKAction()
+        val stringSelection = StringSelection(exception)
+        CopyPasteManager.getInstance().setContents(stringSelection)
+        BrowserUtil.browse("https://chatgpt.com/")
+        Messages.showInfoMessage("Error has been copied to clipboard.", "Error Info")
+        this.close(0)
+    }
+
+    override fun doCancelAction() {
+        super.doCancelAction()
+        Messages.showInfoMessage("Ok no issues", "Confirmation")
+        this.close(0)
+    }
+
 }
 
 class MyGradleListener : ExternalSystemTaskNotificationListener {
-
-    val coroutineScope= CoroutineScope(Dispatchers.IO)
-
+    lateinit var resultDialog: ResultDialog
+    val stateFlow= MutableStateFlow<Int>(-1)
+    val coroutineScope= CoroutineScope(Dispatchers.Main)
     override fun onStart(id: ExternalSystemTaskId) {
 
     }
@@ -68,8 +91,39 @@ class MyGradleListener : ExternalSystemTaskNotificationListener {
     }
 
     override fun onFailure(id: ExternalSystemTaskId, e: Exception) {
+
         val shouldSpeak= MyPluginSettingState.instance.enableVoice
         if(shouldSpeak) {
+            coroutineScope.launch {
+                stateFlow.collect {it->
+                    when(it) {
+                        0->{
+                            ApplicationManager.getApplication().invokeLater {
+                                if (resultDialog.isShowing) {
+                                    resultDialog.performOKAction()
+                                }
+                            }
+                            stateFlow.value=-1
+                            this.cancel()
+                        }
+                        2-> {
+                            ApplicationManager.getApplication().invokeLater {
+                                if (resultDialog.isShowing) {
+                                    resultDialog.doCancelAction()
+                                }
+                            }
+                            stateFlow.value=-1
+                            this.cancel()
+                        }
+                    }
+                }
+            }
+            ApplicationManager.getApplication().invokeLater {
+                resultDialog = ResultDialog().apply {
+                    exception = e.message.toString()
+                }
+                resultDialog.show()
+            }
             System.setProperty(
                 "freetts.voices",
                 "com.sun.speech.freetts.en.us.cmu_us_kal.KevinVoiceDirectory"
@@ -81,6 +135,7 @@ class MyGradleListener : ExternalSystemTaskNotificationListener {
                 override fun run() {
                     speakText(voice,"It looks like you are facing some issue. Do you want to find a solution on Chat G P T?")
                     result=takeUserInput()
+                    stateFlow.value=result!!
                     when(result) {
                         0-> {
                             speakText(voice,"Error has been copied to clipboard.")
@@ -95,25 +150,8 @@ class MyGradleListener : ExternalSystemTaskNotificationListener {
                         }
                     }
                 }
-
-            }
-            ApplicationManager.getApplication().invokeLater {
-                        result = Messages.showOkCancelDialog(
-                            "It looks like you are facing some issue. Do you want to find solution on ChatGPT?",
-                            "Confirmation",
-                            "Yes",
-                            "No",
-                            Messages.getQuestionIcon()
-                        )
-                if(result==Messages.OK) {
-                Messages.showInfoMessage("Error has been copied to clipboard.", "Error Info")
-            }
-                else {
-                Messages.showInfoMessage("Ok no issues", "Confirmation")
-            }
             }
             thread.start()
-
         }
         else {
             ApplicationManager.getApplication().invokeLater {
