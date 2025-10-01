@@ -54,13 +54,13 @@ class ResultDialog:DialogWrapper(true) {
         CopyPasteManager.getInstance().setContents(stringSelection)
         BrowserUtil.browse("https://chatgpt.com/")
         Messages.showInfoMessage("Error has been copied to clipboard.", "Error Info")
-        this.close(0)
+        this.close(OK_EXIT_CODE)
     }
 
     override fun doCancelAction() {
         super.doCancelAction()
         Messages.showInfoMessage("Ok no issues", "Confirmation")
-        this.close(0)
+        this.close(CANCEL_EXIT_CODE)
     }
 
 }
@@ -91,33 +91,32 @@ class MyGradleListener : ExternalSystemTaskNotificationListener {
     }
 
     override fun onFailure(id: ExternalSystemTaskId, e: Exception) {
-
-        val shouldSpeak= MyPluginSettingState.instance.enableVoice
-        if(shouldSpeak) {
-            coroutineScope.launch {
-                stateFlow.collect {it->
-                    when(it) {
-                        0->{
-                            ApplicationManager.getApplication().invokeLater {
-                                if (resultDialog.isShowing) {
-                                    resultDialog.performOKAction()
-                                }
+        coroutineScope.launch {
+            stateFlow.collect {it->
+                when(it) {
+                    0->{
+                        ApplicationManager.getApplication().invokeLater {
+                            if (resultDialog.isShowing) {
+                                resultDialog.performOKAction()
                             }
-                            stateFlow.value=-1
-                            this.cancel()
                         }
-                        2-> {
-                            ApplicationManager.getApplication().invokeLater {
-                                if (resultDialog.isShowing) {
-                                    resultDialog.doCancelAction()
-                                }
+                        stateFlow.value=-1
+                        this.cancel()
+                    }
+                    2-> {
+                        ApplicationManager.getApplication().invokeLater {
+                            if (resultDialog.isShowing) {
+                                resultDialog.doCancelAction()
                             }
-                            stateFlow.value=-1
-                            this.cancel()
                         }
+                        stateFlow.value=-1
+                        this.cancel()
                     }
                 }
             }
+        }
+        val shouldSpeak= MyPluginSettingState.instance.enableVoice
+        if(shouldSpeak) {
             ApplicationManager.getApplication().invokeLater {
                 resultDialog = ResultDialog().apply {
                     exception = e.message.toString()
@@ -140,9 +139,9 @@ class MyGradleListener : ExternalSystemTaskNotificationListener {
                         0-> {
                             speakText(voice,"Error has been copied to clipboard.")
                             voice?.deallocate()
-                            val stringSelection = StringSelection(e.message)
-                            CopyPasteManager.getInstance().setContents(stringSelection)
-                            BrowserUtil.browse("https://chatgpt.com/")
+//                            val stringSelection = StringSelection(e.message)
+//                            CopyPasteManager.getInstance().setContents(stringSelection)
+//                            BrowserUtil.browse("https://chatgpt.com/")
                         }
                         2-> {
                             speakText(voice, "Ok no issues")

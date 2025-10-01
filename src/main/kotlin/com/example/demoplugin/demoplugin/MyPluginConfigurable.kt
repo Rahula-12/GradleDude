@@ -12,7 +12,7 @@ class MyPluginConfigurable : Configurable {
     private val settings = MyPluginSettingState.instance
     private var enableVoiceCheckbox: JCheckBox? = null
 
-    override fun getDisplayName(): String = "Demo Plugin"
+    override fun getDisplayName(): String = "Voice Control (Gradle Assistant)"
 
     override fun createComponent(): JComponent {
         val panel = JPanel(BorderLayout())
