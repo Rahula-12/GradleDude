@@ -15,6 +15,7 @@ import com.sun.speech.freetts.Voice
 import com.sun.speech.freetts.VoiceManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -103,6 +104,7 @@ class MyGradleListener : ExternalSystemTaskNotificationListener {
                                 }
                             }
                             stateFlow.value=-1
+                            this.cancel()
                         }
                         2-> {
                             ApplicationManager.getApplication().invokeLater {
@@ -111,6 +113,7 @@ class MyGradleListener : ExternalSystemTaskNotificationListener {
                                 }
                             }
                             stateFlow.value=-1
+                            this.cancel()
                         }
                     }
                 }
@@ -147,9 +150,6 @@ class MyGradleListener : ExternalSystemTaskNotificationListener {
                         }
                     }
                 }
-            }
-            ApplicationManager.getApplication().invokeLater {
-                resultDialog.show()
             }
             thread.start()
         }
