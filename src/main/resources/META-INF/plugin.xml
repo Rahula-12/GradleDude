@@ -1,22 +1,28 @@
 <!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
 <idea-plugin>
   <!-- Unique identifier of the plugin. It should be FQN. It cannot be changed between the plugin versions. -->
-  <id>com.example.demoPlugin.demoPlugin</id>
+  <id>com.plugins.gradle_assistant</id>
 
   <!-- Public plugin name should be written in Title Case.
        Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-name -->
-  <name>GradleDude</name>
+  <name>Gradle Assistant</name>
 
   <!-- A displayed Vendor name or Organization ID displayed on the Plugins Page. -->
-  <vendor email="support@yourcompany.com" url="https://www.yourcompany.com">YourCompany</vendor>
+  <vendor email="ra9853044@gmail.com" url="https://rahula-12.github.io/portfolio/">Rahul Arora</vendor>
+  <version>1.0.0</version>
+  <change-notes>
+    Initial release of Gradle Assistant.
+  </change-notes>
 
   <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
        Simple HTML elements (text formatting, paragraphs, and lists) can be added inside of <![CDATA[ ]]> tag.
        Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-description -->
   <description><![CDATA[
-    Enter short description for your plugin here.<br>
-    <em>most HTML tags may be used</em>
-  ]]></description>
+Gradle Assistant helps you resolve Gradle build issues effortlessly.<br><br>
+Whenever a Gradle error occurs, it automatically detects the issue and shows a dialog asking if you'd like to search for a solution on <b>ChatGPT</b>.<br><br>
+When <b>Voice Control</b> is enabled in settings, the assistant can <b>speak responses</b> and <b>take voice commands</b>, offering a hands-free debugging experience.<br><br>
+<em>Streamline your Gradle troubleshooting with AI and voice assistance — right inside your JetBrains IDE.</em>
+]]></description>
 
   <!-- Product and plugin compatibility requirements.
        Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->

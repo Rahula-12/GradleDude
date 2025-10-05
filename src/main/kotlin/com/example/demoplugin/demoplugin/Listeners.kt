@@ -2,7 +2,6 @@ package com.example.demoplugin.demoplugin
 
 import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.PathManager
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskId
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskNotificationEvent
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskNotificationListener
@@ -19,21 +18,20 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
-import okhttp3.OkHttpClient
-import okhttp3.Request
 import org.vosk.Model
 import org.vosk.Recognizer
 import java.awt.datatransfer.StringSelection
+import java.io.File
+import java.io.IOException
+import java.lang.StringBuilder
+import java.net.URLDecoder
 import java.nio.file.Files
-import java.nio.file.Path
-import java.nio.file.StandardCopyOption
-import java.util.zip.ZipInputStream
+import java.nio.file.Paths
 import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.AudioSystem
 import javax.swing.JComponent
 import javax.swing.JLabel
-
-const val MODEL_PATH="/Users/rahularora/Downloads/demoPlugin_complete/src/main/resources/vosk-model-small-en-us"
+import kotlin.jvm.java
 
 class ResultDialog:DialogWrapper(true) {
 
@@ -119,7 +117,9 @@ class MyGradleListener : ExternalSystemTaskNotificationListener {
         if(shouldSpeak) {
             ApplicationManager.getApplication().invokeLater {
                 resultDialog = ResultDialog().apply {
-                    exception = e.message.toString()
+                    val stringBuilder= StringBuilder()
+                     e.stackTrace.forEach { stringBuilder.append(it.toString()).append("\n") }
+                    exception=stringBuilder.toString()
                 }
                 resultDialog.show()
             }
@@ -129,11 +129,10 @@ class MyGradleListener : ExternalSystemTaskNotificationListener {
             )
             val voice: Voice? = VoiceManager.getInstance().getVoice("kevin16")
             voice?.allocate()
-            var result:Int?=null
             val thread=object : Thread(){
                 override fun run() {
                     speakText(voice,"It looks like you are facing some issue. Do you want to find a solution on Chat G P T?")
-                    result=takeUserInput()
+                    val result=takeUserInput()
                     stateFlow.value=result!!
                     when(result) {
                         0-> {
@@ -164,12 +163,11 @@ class MyGradleListener : ExternalSystemTaskNotificationListener {
 
 
             if (result == Messages.OK) {
-                val stringSelection = StringSelection(e.message)
+                val stringSelection = StringSelection(e.stackTrace.toString())
                 CopyPasteManager.getInstance().setContents(stringSelection)
                 Messages.showInfoMessage("Error has been copied to clipboard.", "Error Info")
                 BrowserUtil.browse("https://chatgpt.com/")
             } else {
-
                 Messages.showInfoMessage("Ok no issues", "Confirmation")
             }
         }
@@ -207,58 +205,40 @@ fun registerGradleListener(project: Project, listener: ExternalSystemTaskNotific
     )
 }
 
-fun unzip(zipFile: Path, targetDir: Path) {
-    ZipInputStream(Files.newInputStream(zipFile)).use { zip ->
-        var entry = zip.nextEntry
-        while (entry != null) {
-            val outPath = targetDir.resolve(entry.name)
-            if (entry.isDirectory) {
-                Files.createDirectories(outPath)
-            } else {
-                Files.createDirectories(outPath.parent)
-                Files.copy(zip, outPath, StandardCopyOption.REPLACE_EXISTING)
+
+fun takeUserInput(): Int {
+    val resourcePath = "vosk-model-small-en-us"
+    val tempDir = Files.createTempDirectory("vosk-model").toFile()
+
+    // Copy model files from JAR resources to a real directory
+    val resourceUrl = MyGradleListener::class.java.classLoader.getResource(resourcePath)
+        ?: throw IOException("Model resource not found in JAR")
+
+    // When running from JAR, we need to walk entries inside it
+    if (resourceUrl.protocol == "jar") {
+        val jarPath = resourceUrl.path.substringAfter("file:").substringBefore("!")
+        val jarFile = java.util.jar.JarFile(URLDecoder.decode(jarPath, "UTF-8"))
+        jarFile.use { jar ->
+            val entries = jar.entries()
+            while (entries.hasMoreElements()) {
+                val entry = entries.nextElement()
+                if (entry.name.startsWith(resourcePath + "/") && !entry.isDirectory) {
+                    val outFile = File(tempDir, entry.name.removePrefix(resourcePath + "/"))
+                    outFile.parentFile.mkdirs()
+                    jar.getInputStream(entry).use { input ->
+                        outFile.outputStream().use { output -> input.copyTo(output) }
+                    }
+                }
             }
-            entry = zip.nextEntry
         }
     }
-}
-
-fun getModelDir(): Path {
-    val pluginDataDir = Path.of(PathManager.getPluginsPath(), "demoPlugin", "models")
-    java.nio.file.Files.createDirectories(pluginDataDir)
-    return pluginDataDir
-}
-
-suspend fun ensureModelExists(): Path {
-    val modelDir = getModelDir().resolve("vosk-model-small-en-us")
-    if (Files.exists(modelDir) && Files.isDirectory(modelDir)) {
-        return modelDir
+    else {
+        // If running from IDE (not JAR)
+        val src = Paths.get(resourceUrl.toURI()).toFile()
+        src.copyRecursively(tempDir, overwrite = true)
     }
 
-    val modelZip = getModelDir().resolve("vosk-model-small-en-us.zip")
-    val url = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
-
-    val client = OkHttpClient()
-    val request = Request.Builder().url(url).build()
-
-    println("⬇️ Downloading Vosk model... (this may take a while)")
-
-    client.newCall(request).execute().use { response ->
-        if (!response.isSuccessful) throw IllegalStateException("Failed to download model: ${response.code}")
-        response.body?.byteStream()?.use { input ->
-            Files.copy(input, modelZip, StandardCopyOption.REPLACE_EXISTING)
-        }
-    }
-
-    // unzip
-    unzip(modelZip, getModelDir())
-
-    return modelDir
-}
-
-
- fun takeUserInput(): Int {
-    val model = Model(MODEL_PATH)
+    val model = Model(tempDir.absolutePath)
     val recognizer = Recognizer(model, 16000.0f)
     val format = AudioFormat(16000f, 16, 1, true, false)
     val microphone = AudioSystem.getTargetDataLine(format)
@@ -292,6 +272,7 @@ suspend fun ensureModelExists(): Path {
         microphone.close()
     }
 }
+
 
 
 
