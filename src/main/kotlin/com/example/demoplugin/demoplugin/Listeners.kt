@@ -8,6 +8,7 @@ import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskNotifica
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.DialogWrapper
+import com.intellij.openapi.ui.DialogWrapper.OK_EXIT_CODE
 import com.intellij.openapi.ui.Messages
 import com.intellij.util.messages.Topic
 import com.sun.speech.freetts.Voice
@@ -23,7 +24,6 @@ import org.vosk.Recognizer
 import java.awt.datatransfer.StringSelection
 import java.io.File
 import java.io.IOException
-import java.lang.StringBuilder
 import java.net.URLDecoder
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -31,7 +31,6 @@ import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.AudioSystem
 import javax.swing.JComponent
 import javax.swing.JLabel
-import kotlin.jvm.java
 
 class ResultDialog:DialogWrapper(true) {
 
@@ -48,11 +47,7 @@ class ResultDialog:DialogWrapper(true) {
 
     override fun doOKAction() {
         super.doOKAction()
-        val stringSelection = StringSelection(exception)
-        CopyPasteManager.getInstance().setContents(stringSelection)
-        BrowserUtil.browse("https://chatgpt.com/")
-        Messages.showInfoMessage("Error has been copied to clipboard.", "Error Info")
-        this.close(OK_EXIT_CODE)
+
     }
 
     override fun doCancelAction() {
@@ -95,7 +90,13 @@ class MyGradleListener : ExternalSystemTaskNotificationListener {
                     0->{
                         ApplicationManager.getApplication().invokeLater {
                             if (resultDialog.isShowing) {
-                                resultDialog.performOKAction()
+                                val stringBuilder= StringBuilder()
+                                e.stackTrace.forEach { stringBuilder.append(it.toString()).append("\n") }
+                                val stringSelection = StringSelection(stringBuilder.toString())
+                                CopyPasteManager.getInstance().setContents(stringSelection)
+                                BrowserUtil.browse("https://chatgpt.com/")
+                                Messages.showInfoMessage("Error has been copied to clipboard.", "Error Info")
+                                resultDialog.close(OK_EXIT_CODE)
                             }
                         }
                         stateFlow.value=-1
@@ -118,7 +119,7 @@ class MyGradleListener : ExternalSystemTaskNotificationListener {
             ApplicationManager.getApplication().invokeLater {
                 resultDialog = ResultDialog().apply {
                     val stringBuilder= StringBuilder()
-                     e.stackTrace.forEach { stringBuilder.append(it.toString()).append("\n") }
+                    e.stackTrace.forEach { stringBuilder.append(it.toString()).append("\n") }
                     exception=stringBuilder.toString()
                 }
                 resultDialog.show()
@@ -153,30 +154,30 @@ class MyGradleListener : ExternalSystemTaskNotificationListener {
         }
         else {
             ApplicationManager.getApplication().invokeLater {
-            val result = Messages.showOkCancelDialog(
-                "It looks like you are facing some issue. Do you want to find solution on ChatGPT?",
-                "Confirmation",
-                "Yes",
-                "No",
-                Messages.getQuestionIcon()
-            )
+                val result = Messages.showOkCancelDialog(
+                    "It looks like you are facing some issue. Do you want to find solution on ChatGPT?",
+                    "Confirmation",
+                    "Yes",
+                    "No",
+                    Messages.getQuestionIcon()
+                )
 
 
-            if (result == Messages.OK) {
-                val stringSelection = StringSelection(e.stackTrace.toString())
-                CopyPasteManager.getInstance().setContents(stringSelection)
-                Messages.showInfoMessage("Error has been copied to clipboard.", "Error Info")
-                BrowserUtil.browse("https://chatgpt.com/")
-            } else {
-                Messages.showInfoMessage("Ok no issues", "Confirmation")
+                if (result == Messages.OK) {
+                    val stringSelection = StringSelection(e.stackTrace.toString())
+                    CopyPasteManager.getInstance().setContents(stringSelection)
+                    Messages.showInfoMessage("Error has been copied to clipboard.", "Error Info")
+                    BrowserUtil.browse("https://chatgpt.com/")
+                } else {
+                    Messages.showInfoMessage("Ok no issues", "Confirmation")
+                }
             }
-        }
         }
     }
 
     private  fun speakText(voice: Voice?,text:String) {
 
-            voice?.speak(text)
+        voice?.speak(text)
 
     }
 
@@ -249,18 +250,14 @@ fun takeUserInput(): Int {
 
         val buffer = ByteArray(4096)
         val startTime = System.currentTimeMillis()
-        println("🎤 Speak into the microphone...")
-
         while (System.currentTimeMillis() - startTime <= 5000) {
             val bytesRead = microphone.read(buffer, 0, buffer.size)
             if (bytesRead > 0) {
                 if (recognizer.acceptWaveForm(buffer, bytesRead)) {
                     val text = recognizer.result.lowercase()
-                    println("✅ Final: $text")
                     if ("yes" in text || "ok" in text) return 0
                 } else {
                     val partial = recognizer.partialResult.lowercase()
-                    println("🔹 Partial: $partial")
                     if ("yes" in partial || "ok" in partial) return 0
                 }
             }
@@ -272,7 +269,6 @@ fun takeUserInput(): Int {
         microphone.close()
     }
 }
-
 
 
 
