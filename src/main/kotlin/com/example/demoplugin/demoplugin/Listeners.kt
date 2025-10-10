@@ -1,5 +1,4 @@
 package com.example.demoplugin.demoplugin
-
 import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.externalSystem.model.task.ExternalSystemTaskId
@@ -31,10 +30,10 @@ import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.AudioSystem
 import javax.swing.JComponent
 import javax.swing.JLabel
-
 class ResultDialog:DialogWrapper(true) {
-
     lateinit var exception: String
+    lateinit var okAction:()->Unit
+    lateinit var closeAction:()->Unit
 
     init {
         init()
@@ -47,13 +46,13 @@ class ResultDialog:DialogWrapper(true) {
 
     override fun doOKAction() {
         super.doOKAction()
+        okAction()
 
     }
 
     override fun doCancelAction() {
         super.doCancelAction()
-        Messages.showInfoMessage("Ok no issues", "Confirmation")
-        this.close(CANCEL_EXIT_CODE)
+        closeAction()
     }
 
 }
@@ -84,73 +83,70 @@ class MyGradleListener : ExternalSystemTaskNotificationListener {
     }
 
     override fun onFailure(id: ExternalSystemTaskId, e: Exception) {
+        val shouldSpeak= MyPluginSettingState.instance.enableVoice
+        System.setProperty(
+            "freetts.voices",
+            "com.sun.speech.freetts.en.us.cmu_us_kal.KevinVoiceDirectory"
+        )
+        val voice: Voice? = VoiceManager.getInstance().getVoice("kevin16")
+        if(shouldSpeak){
+            voice?.allocate()
+            speakText(voice,"It looks like you are facing some issue. Do you want to find a solution on Chat G P T?")
+        }
         coroutineScope.launch {
             stateFlow.collect {it->
                 when(it) {
                     0->{
                         ApplicationManager.getApplication().invokeLater {
-                            if (resultDialog.isShowing) {
+                            if(shouldSpeak) speakText(voice,"Error has been copied to clipboard.")
+//                            if (resultDialog.isShowing) {
+                            resultDialog.close(OK_EXIT_CODE)
                                 val stringBuilder= StringBuilder()
                                 e.stackTrace.forEach { stringBuilder.append(it.toString()).append("\n") }
                                 val stringSelection = StringSelection(stringBuilder.toString())
                                 CopyPasteManager.getInstance().setContents(stringSelection)
                                 BrowserUtil.browse("https://chatgpt.com/")
                                 Messages.showInfoMessage("Error has been copied to clipboard.", "Error Info")
-                                resultDialog.close(OK_EXIT_CODE)
-                            }
+//                            }
                         }
                         stateFlow.value=-1
+//                        voice?.deallocate()
                         this.cancel()
                     }
                     2-> {
                         ApplicationManager.getApplication().invokeLater {
-                            if (resultDialog.isShowing) {
-                                resultDialog.doCancelAction()
-                            }
+                            if(shouldSpeak) speakText(voice, "Ok no issues")
+                            resultDialog.close(DialogWrapper.CANCEL_EXIT_CODE)
+                            Messages.showInfoMessage("Ok no issues", "Confirmation")
                         }
                         stateFlow.value=-1
+//                        voice?.deallocate()
                         this.cancel()
                     }
                 }
             }
         }
-        val shouldSpeak= MyPluginSettingState.instance.enableVoice
+
         if(shouldSpeak) {
+            val job=coroutineScope.launch(Dispatchers.Default) {
+                stateFlow.value=takeUserInput()
+            }
             ApplicationManager.getApplication().invokeLater {
                 resultDialog = ResultDialog().apply {
                     val stringBuilder= StringBuilder()
                     e.stackTrace.forEach { stringBuilder.append(it.toString()).append("\n") }
                     exception=stringBuilder.toString()
+                    okAction={
+                        job.cancel()
+                        stateFlow.value=0
+                    }
+                    closeAction={
+                        job.cancel()
+                        stateFlow.value=2
+                    }
                 }
                 resultDialog.show()
             }
-            System.setProperty(
-                "freetts.voices",
-                "com.sun.speech.freetts.en.us.cmu_us_kal.KevinVoiceDirectory"
-            )
-            val voice: Voice? = VoiceManager.getInstance().getVoice("kevin16")
-            voice?.allocate()
-            val thread=object : Thread(){
-                override fun run() {
-                    speakText(voice,"It looks like you are facing some issue. Do you want to find a solution on Chat G P T?")
-                    val result=takeUserInput()
-                    stateFlow.value=result!!
-                    when(result) {
-                        0-> {
-                            speakText(voice,"Error has been copied to clipboard.")
-                            voice?.deallocate()
-//                            val stringSelection = StringSelection(e.message)
-//                            CopyPasteManager.getInstance().setContents(stringSelection)
-//                            BrowserUtil.browse("https://chatgpt.com/")
-                        }
-                        2-> {
-                            speakText(voice, "Ok no issues")
-                            voice?.deallocate()
-                        }
-                    }
-                }
-            }
-            thread.start()
         }
         else {
             ApplicationManager.getApplication().invokeLater {
@@ -176,8 +172,9 @@ class MyGradleListener : ExternalSystemTaskNotificationListener {
     }
 
     private  fun speakText(voice: Voice?,text:String) {
-
-        voice?.speak(text)
+        coroutineScope.launch(Dispatchers.IO) {
+            voice?.speak(text)
+        }
 
     }
 
@@ -250,7 +247,7 @@ fun takeUserInput(): Int {
 
         val buffer = ByteArray(4096)
         val startTime = System.currentTimeMillis()
-        while (System.currentTimeMillis() - startTime <= 5000) {
+        while (System.currentTimeMillis() - startTime <= 10000) {
             val bytesRead = microphone.read(buffer, 0, buffer.size)
             if (bytesRead > 0) {
                 if (recognizer.acceptWaveForm(buffer, bytesRead)) {
