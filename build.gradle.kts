@@ -9,7 +9,7 @@ plugins {
 
 
 group = "com.example.demoPlugin"
-version = "1.0-SNAPSHOT"
+version = "1.1-SNAPSHOT"
 
 repositories {
   mavenCentral()
@@ -26,7 +26,7 @@ intellij {
 //  plugins.set(listOf("java", "compiler"))
 
 //  plugins.set(listOf(/* Plugin Dependencies */))
-  plugins.set(listOf("gradle"))
+  plugins.set(listOf("gradle","java"))
 }
 
 
@@ -52,7 +52,7 @@ tasks {
 
   patchPluginXml {
     sinceBuild.set("222")
-    untilBuild.set("232.*")
+    untilBuild.set("")      // Leave empty to support future builds
   }
 
   signPlugin {
@@ -64,6 +64,9 @@ tasks {
   publishPlugin {
     token.set(System.getenv("PUBLISH_TOKEN"))
   }
+  buildPlugin {
+    from(configurations.runtimeClasspath)
+  }
 }
 
 dependencies {
@@ -73,6 +76,7 @@ dependencies {
   implementation("net.sf.sociaal:freetts:1.2.2")
 //  implementation("edu.cmu.sphinx:sphinx4-core:5prealpha-SNAPSHOT")
 //  implementation("edu.cmu.sphinx:sphinx4-data:5prealpha-SNAPSHOT")
+  implementation("net.java.dev.jna:jna:5.13.0")
   implementation("com.alphacephei:vosk:0.3.38")
 
 }

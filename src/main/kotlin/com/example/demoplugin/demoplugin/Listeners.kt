@@ -30,6 +30,7 @@ import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.AudioSystem
 import javax.swing.JComponent
 import javax.swing.JLabel
+
 class ResultDialog:DialogWrapper(true) {
     lateinit var exception: String
     lateinit var okAction:()->Unit
@@ -184,9 +185,7 @@ class MyGradleListener : ExternalSystemTaskNotificationListener {
     }
 
     override fun onCancel(id: ExternalSystemTaskId) {
-        ApplicationManager.getApplication().invokeLater {
-            Messages.showInfoMessage("Cancelled", "Joke")
-        }
+
     }
 }
 
